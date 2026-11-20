@@ -26,11 +26,11 @@ export async function prepareNeonTestSchema() {
   const uploads = join(dir, "uploads");
   pooledUrl.searchParams.set("schema", schema);
   pooledUrl.searchParams.set("sslmode", "verify-full");
-  pooledUrl.searchParams.set("sslnegotiation", "direct");
+  pooledUrl.searchParams.delete("sslnegotiation");
   pooledUrl.searchParams.set("connect_timeout", "30");
   directUrl.searchParams.set("schema", schema);
   directUrl.searchParams.set("sslmode", "verify-full");
-  directUrl.searchParams.set("sslnegotiation", "direct");
+  directUrl.searchParams.delete("sslnegotiation");
   directUrl.searchParams.set("connect_timeout", "30");
   const env = {
     ...process.env,

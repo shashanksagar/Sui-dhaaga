@@ -1,60 +1,54 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, Ruler, Upload, X } from "lucide-react";
-import { addressSchema, measurementsSchema, orderSchema } from "@/lib/validation";
-import { money, economics } from "@/lib/money";
-import { api, errorText, uploadImage } from "@/lib/client";
-import { garments } from "@/lib/demo-data";
-import type { TailorCard } from "./marketplace";
-type Address = { name: string; line1: string; city: string; postalCode: string; country: string; phone: string };
-const emptyAddress: Address = { name: "", line1: "", city: "", postalCode: "", country: "", phone: "" };
-function AddressFields({ title, value, onChange }: { title: string; value: Address; onChange: (address: Address) => void }) {
-  const labels = { name: "Contact name", line1: "Street address", city: "City / region", postalCode: "Postal code", country: "Country", phone: "Phone number" };
-  return <fieldset style={{ border: 0, padding: 0 }}><legend style={{ fontWeight: 600, marginBottom: 20 }}>{title}</legend><div className="form-grid">{(Object.keys(labels) as (keyof Address)[]).map(key => <label className="field" key={key}>{labels[key]}<input required maxLength={key === "line1" ? 200 : 100} autoComplete={key === "phone" ? "tel" : undefined} value={value[key]} onChange={e => onChange({ ...value, [key]: e.target.value })} /></label>)}</div></fieldset>;
-}
+import { Check, Ruler } from "lucide-react";
+import { addressSchema } from "@/lib/validation";
+import { money, splitPayment } from "@/lib/money";
+import { contactError } from "@/lib/privacy";
+import { api, errorText } from "@/lib/client";
+import type { OrderDTO, TailorCard } from "@/lib/contracts";
+import { AddressFields, emptyAddress, PhotoPicker, type Photo, MaskedBadge } from "./fields";
+
 export function MeasurementGuide() {
-  return <div className="guide"><svg viewBox="0 0 120 210" role="img" aria-labelledby="body-guide-title"><title id="body-guide-title">Measure chest around the fullest point, waist at the natural waist, and garment length from shoulder to hem.</title><circle cx="60" cy="21" r="15" fill="#d8c8b3" /><path d="M43 40 26 49 12 105 27 109 40 73 42 122 34 192 51 195 60 136 69 195 86 192 78 122 80 73 93 109 108 105 94 49 77 40Q60 49 43 40Z" fill="#d8c8b3" /><path d="M36 69h48M42 107h36M104 44v151M99 44h10M99 195h10" stroke="#ad543b" strokeWidth="2" strokeDasharray="4 2" /><text x="0" y="67" fontSize="10" fill="#ad543b">1</text><text x="24" y="106" fontSize="10" fill="#ad543b">2</text><text x="108" y="122" fontSize="10" fill="#ad543b">3</text></svg><div><h3><Ruler size={16} style={{ display: "inline", marginRight: 7 }} />A fit that feels like you.</h3><p className="muted" style={{ fontSize: 12 }}>1. Chest: around the fullest point.<br />2. Waist: around your natural waist.<br />3. Length: shoulder to desired hem.<br />Keep the tape level and comfortably snug.</p></div></div>;
+  return <div className="guide"><svg viewBox="0 0 120 210" role="img" aria-labelledby="body-guide-title"><title id="body-guide-title">Measure chest around the fullest point, waist at the natural waist, and length from shoulder to hem.</title><circle cx="60" cy="21" r="15" fill="#d8c8b3" /><path d="M43 40 26 49 12 105 27 109 40 73 42 122 34 192 51 195 60 136 69 195 86 192 78 122 80 73 93 109 108 105 94 49 77 40Q60 49 43 40Z" fill="#d8c8b3" /><path d="M36 69h48M42 107h36M104 44v151M99 44h10M99 195h10" stroke="#ad543b" strokeWidth="2" strokeDasharray="4 2" /><text x="0" y="67" fontSize="10" fill="#ad543b">1</text><text x="24" y="106" fontSize="10" fill="#ad543b">2</text><text x="108" y="122" fontSize="10" fill="#ad543b">3</text></svg><div><h3><Ruler size={16} /> A fit that feels like you.</h3><p className="muted">1. Chest: fullest point.<br />2. Waist: natural waist.<br />3. Length: shoulder to desired hem.<br />Use one unit and a comfortably snug tape. Or send a reference garment.</p></div></div>;
 }
 export function OrderWizard({ tailor }: { tailor: TailorCard }) {
   const router = useRouter();
-  const [step, setStep] = useState(0);
-  const [garment, setGarment] = useState("Dress");
-  const [measurements, setMeasurements] = useState({ chest: "", waist: "", length: "", unit: "cm" });
-  const [pickup, setPickup] = useState(emptyAddress);
-  const [delivery, setDelivery] = useState(emptyAddress);
-  const [same, setSame] = useState(true);
-  const [images, setImages] = useState<{ id: string; url: string }[]>([]);
-  const [checkoutKey] = useState(() => crypto.randomUUID());
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const price = economics(tailor.basePrice);
-  const data = () => ({ tailorId: tailor.id, garmentType: garment, measurements: { chest: Number(measurements.chest), waist: Number(measurements.waist), length: Number(measurements.length), unit: measurements.unit }, pickupAddress: pickup, deliveryAddress: same ? pickup : delivery, uploadIds: images.map(i => i.id), checkoutKey, quotedAmount: tailor.basePrice });
-  return <div className="split"><div><ol className="tracker" aria-label="Order form steps">{["Your design", "Measurements", "Doorstep details", "Review & pay"].map((label, index) => <li className={index <= step ? "done" : ""} key={label} aria-current={index === step ? "step" : undefined}><span>{index < step ? <Check size={12} /> : index + 1}</span>{label}</li>)}</ol>
+  const [step, setStep] = useState(0), [garmentType, setGarmentType] = useState(tailor.garmentCatalog[0]?.garmentType ?? "");
+  const [measurementMode, setMode] = useState("CUSTOM_MEASUREMENTS"), [unit, setUnit] = useState("cm");
+  const [measurements, setMeasurements] = useState<Record<string, string>>({});
+  const [specs, setSpecs] = useState(""), [pickup, setPickup] = useState(emptyAddress), [delivery, setDelivery] = useState(emptyAddress);
+  const [same, setSame] = useState(true), [agreed, setAgreed] = useState(false);
+  const [images, setImages] = useState<Photo[]>([]), [checkoutKey] = useState(() => crypto.randomUUID());
+  const [busy, setBusy] = useState(false), [uploadBusy, setUploadBusy] = useState(false), [error, setError] = useState("");
+  const garment = tailor.garmentCatalog.find(g => g.garmentType === garmentType);
+  if (!garment) return <p className="notice error" role="alert">This tailor has no available garment catalog. Return to Explore.</p>;
+  const amounts = splitPayment(garment.finalDisplayPrice), custom = measurementMode !== "REFERENCE_CLOTH_TEMPLATE";
+  return <div className="split"><div><ol className="tracker" aria-label="Order form steps">{["Design", "Measurements", "Private addresses", "Timeline & quote"].map((label, i) => <li key={label} className={i <= step ? "done" : ""} aria-current={i === step ? "step" : undefined}><span>{i < step ? <Check size={12} /> : i + 1}</span>{label}</li>)}</ol>
     <form className="panel" onSubmit={async e => {
       e.preventDefault(); setError("");
       try {
-        if (step === 1) measurementsSchema.parse(data().measurements);
+        const privacyError = contactError(specs); if (privacyError) throw new Error(privacyError);
+        if (!specs.trim()) throw new Error("Please describe your design.");
+        if (step === 1 && custom && garment.requiredMeasurements.some(key => !Number.isFinite(Number(measurements[key])) || Number(measurements[key]) <= 0 || Number(measurements[key]) > 500)) throw new Error("Complete every required measurement using positive values up to 500.");
         if (step === 2) { addressSchema.parse(pickup); addressSchema.parse(same ? pickup : delivery); }
         if (step < 3) { setStep(step + 1); return; }
-        const input = orderSchema.parse(data());
+        if (!agreed) throw new Error("Please explicitly agree to the estimated completion duration.");
         setBusy(true);
-        const order = await api<{ id: string }>("/api/orders", "POST", input);
+        const order = await api<OrderDTO>("/api/orders", "POST", {
+          tailorId: tailor.id, garmentType, quotedAmount: garment.finalDisplayPrice,
+          designSpecifications: specs, measurementMode,
+          measurements: custom ? { ...Object.fromEntries(garment.requiredMeasurements.map(key => [key, Number(measurements[key])])), unit } : { unit },
+          hasReferenceCloth: measurementMode !== "CUSTOM_MEASUREMENTS", pickupAddress: pickup, deliveryAddress: same ? pickup : delivery,
+          uploadIds: images.map(p => p.id), checkoutKey, agreedCompletionDays: garment.estimatedDays, customerAgreedToTimeline: true,
+        });
         router.push(`/orders/${order.id}`);
       } catch (error) { setError(errorText(error)); } finally { setBusy(false); }
     }}>
-      {step === 0 && <><div className="eyebrow">01 / Dream it</div><h2 style={{ fontSize: 32 }}>What are we making?</h2><label className="field">Garment type<select value={garment} onChange={e => setGarment(e.target.value)}>{garments.map(g => <option key={g}>{g}</option>)}</select></label><p className="muted">Share your inspiration. Up to 5 JPEG, PNG, or WebP images, 3 MB each. Reference photos are optional.</p><label className="btn outline"><Upload size={15} /> {busy ? "Uploading..." : "Add reference photos"}<input aria-label="Reference photos" type="file" className="sr-only" accept="image/jpeg,image/png,image/webp" disabled={busy || images.length === 5} onChange={async e => {
-        const file = e.target.files?.[0]; if (!file) return;
-        setBusy(true); setError("");
-        try { const image = await uploadImage(file); setImages([...images, image]); } catch (error) { setError(errorText(error)); } finally { setBusy(false); e.target.value = ""; }
-      }} /></label><div className="photos" style={{ marginTop: 16 }}>{images.map((image, i) => <div key={image.id}><img src={image.url} alt={`Reference ${i + 1}`} /><button type="button" className="btn small outline" aria-label={`Remove reference ${i + 1}`} disabled={busy} onClick={async () => {
-        setBusy(true); setError("");
-        try { await api(`/api/uploads/${image.id}`, "DELETE"); setImages(images.filter(p => p.id !== image.id)); } catch (error) { setError(errorText(error)); } finally { setBusy(false); }
-      }}><X size={12} /></button></div>)}</div></>}
-      {step === 1 && <><div className="eyebrow">02 / Your perfect fit</div><h2 style={{ fontSize: 32 }}>A few measurements.</h2><MeasurementGuide /><label className="field">Measurement unit<select value={measurements.unit} onChange={e => setMeasurements({ ...measurements, unit: e.target.value })}><option value="cm">Centimeters (cm)</option><option value="in">Inches (in)</option></select></label><div className="form-grid">{(["chest", "waist", "length"] as const).map(key => <label className="field" key={key} style={{ textTransform: "capitalize" }}>{key} ({measurements.unit})<input type="number" step=".1" min=".1" max="500" required value={measurements[key]} onChange={e => setMeasurements({ ...measurements, [key]: e.target.value })} /></label>)}</div></>}
-      {step === 2 && <><div className="eyebrow">03 / The journey</div><h2 style={{ fontSize: 32 }}>We come to you.</h2><AddressFields title="Fabric pickup address" value={pickup} onChange={setPickup} /><label className="actions" style={{ fontSize: 13, marginBottom: 24 }}><input type="checkbox" checked={same} onChange={e => setSame(e.target.checked)} /> Deliver the finished garment to the same address</label>{!same && <AddressFields title="Finished garment delivery address" value={delivery} onChange={setDelivery} />}</>}
-      {step === 3 && <><div className="eyebrow">04 / A beautiful beginning</div><h2 style={{ fontSize: 32 }}>Your creation, at a glance.</h2><dl className="details"><dt>Design</dt><dd>{garment} by {tailor.name}</dd><dt>Measurements</dt><dd>Chest {measurements.chest}, waist {measurements.waist}, length {measurements.length} {measurements.unit}</dd><dt>Pickup</dt><dd>{pickup.line1}, {pickup.city}, {pickup.country}</dd><dt>Delivery</dt><dd>{(same ? pickup : delivery).line1}, {(same ? pickup : delivery).city}, {(same ? pickup : delivery).country}</dd></dl><p className="notice">Create your order, then confirm the first {money(price.upfront)} installment using the payment simulator. No real money is charged.</p></>}
-      {error && <p className="notice error" role="alert">{error}</p>}
-      <div className="actions" style={{ marginTop: 25 }}>{step > 0 && <button className="btn outline" type="button" disabled={busy} onClick={() => { setStep(step - 1); setError(""); }}>Back</button>}<button className="btn rust" disabled={busy}>{busy ? "Please wait..." : step === 3 ? "Create order & continue to demo payment" : "Continue"}<ArrowRight size={14} /></button></div>
-    </form></div><aside className="panel"><img src={tailor.image} alt={`${tailor.name} garment illustration`} style={{ width: "100%", height: 190, objectFit: "cover", borderRadius: 6, marginBottom: 20 }} /><div className="eyebrow">Your chosen atelier</div><h3>{tailor.name}</h3><p className="muted">{tailor.location}<br />{tailor.turnaroundDays}-day production estimate</p><p className="muted" style={{ fontSize: 12 }}>Fixed quote for your chosen garment. Pickup and delivery are manually coordinated by our team.</p><hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "20px 0" }} /><dl className="details"><dt>Total (USD)</dt><dd className="price">{money(tailor.basePrice)}</dd><dt>Included platform fee (10%)</dt><dd>{money(price.fee)}</dd><dt>Tailor net payout</dt><dd>{money(price.net)}</dd><dt>50% upfront / balance when ready</dt><dd>{money(price.upfront)} / {money(price.final)}</dd></dl><span className="badge">DEMO &middot; No real charges</span></aside></div>;
+      {step === 0 && <><div className="eyebrow">01 / Dream it</div><h2>What are we making?</h2><label className="field">Garment type<select value={garmentType} onChange={e => { setGarmentType(e.target.value); setAgreed(false); setMeasurements({}); }}>{tailor.garmentCatalog.map(g => <option key={g.garmentType}>{g.garmentType}</option>)}</select></label><label className="field">Design specifications<textarea required maxLength={2000} value={specs} onChange={e => setSpecs(e.target.value)} placeholder="Describe cut, fabric and finishing, without names or contact details." /></label>{contactError(specs) && <p className="notice error" role="alert">{contactError(specs)}</p>}<PhotoPicker value={images} onChange={setImages} onBusy={setUploadBusy} /><p className="notice">Admin reviews your design and photos before the tailor can see them. Do not include real names, addresses, phone numbers or social handles.</p></>}
+      {step === 1 && <><h2>Your perfect fit.</h2><MeasurementGuide /><label className="field">Measurement method<select value={measurementMode} onChange={e => setMode(e.target.value)}><option value="CUSTOM_MEASUREMENTS">Enter the tailor&apos;s required measurements</option><option value="REFERENCE_CLOTH_TEMPLATE">Send a reference cloth as a size template</option><option value="BOTH">Measurements and reference cloth</option></select></label>{custom && <><label className="field">Unit<select value={unit} onChange={e => setUnit(e.target.value)}><option value="cm">Centimeters</option><option value="in">Inches</option></select></label><div className="form-grid">{garment.requiredMeasurements.map(key => <label className="field" key={key}>{key} ({unit})<input type="number" step="0.1" min="0.1" max="500" required value={measurements[key] ?? ""} onChange={e => setMeasurements({ ...measurements, [key]: e.target.value })} /></label>)}</div></>}{measurementMode !== "CUSTOM_MEASUREMENTS" && <p className="notice">Your reference garment will be picked up with the raw fabric. Pack and label both for the logistics team.</p>}</>}
+      {step === 2 && <><h2>We come to you.</h2><p className="notice">These details go only to Admin, never to your tailor.</p><AddressFields title="Fabric and reference-cloth pickup" value={pickup} onChange={setPickup} /><label className="actions"><input type="checkbox" checked={same} onChange={e => setSame(e.target.checked)} /> Deliver to the same private address</label>{!same && <AddressFields title="Finished garment delivery" value={delivery} onChange={setDelivery} />}</>}
+      {step === 3 && <><h2>Agree on the journey.</h2><MaskedBadge code={tailor.maskedCode} /><p>{garmentType} &middot; {measurementMode.replaceAll("_", " ")}</p><label className="actions"><input required type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} /> Agree to Estimated Completion Duration: {garment.estimatedDays} days</label><p className="muted">The tailor must confirm or propose a revised duration. Any revision needs your acceptance before pickup. Production duration starts when fabric arrives at the workshop.</p><p className="notice">Nothing is charged at checkout. Admin records {money(amounts.pickup)} at actual pickup, {money(amounts.delivery)} at delivery. You approve the final fit before paying {money(amounts.approval)}.</p></>}
+      {error && <p className="notice error" role="alert">{error}</p>}<div className="actions">{step > 0 && <button type="button" className="btn outline" disabled={busy || uploadBusy} onClick={() => { setStep(step - 1); setError(""); }}>Back</button>}<button className="btn rust" disabled={busy || uploadBusy || (step === 3 && !agreed)}>{busy ? "Creating..." : step === 3 ? "Confirm order and agreed estimate" : "Continue"}</button></div>
+    </form></div><aside className="panel"><img src={tailor.portfolioImages[0] || "/images/atelier-hero.svg"} alt="Approved portfolio design" style={{ width: "100%", height: 180, objectFit: "cover" }} /><h3>{tailor.maskedCode}</h3><p>{tailor.city}</p><dl className="details"><dt>Tailor base price</dt><dd>{money(garment.basePrice)}</dd><dt>Added platform commission ({garment.commissionPercent}%)</dt><dd>{money(garment.platformCommission)}</dd><dt>Inclusive INR price</dt><dd className="price">{money(garment.finalDisplayPrice)}</dd><dt>Pickup 50% / Delivery 25% / Approval 25%</dt><dd>{money(amounts.pickup)} / {money(amounts.delivery)} / {money(amounts.approval)}</dd></dl><p className="meta">Whole-paise rounding reconciles exactly. Demo payments only.</p></aside></div>;
 }

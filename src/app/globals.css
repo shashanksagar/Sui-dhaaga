@@ -86,8 +86,8 @@ textarea { min-height:90px; resize:vertical; }
 .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:28px; }
 .stats .panel { padding:20px; margin:0; }
 .stats strong { font-family:Georgia,serif; font-size:28px; display:block; margin-top:10px; }
-.tracker { list-style:none; padding:0; display:flex; margin:30px 0; }
-.tracker li { flex:1; text-align:center; font-size:10px; position:relative; color:var(--muted); }
+.tracker { list-style:none; padding:0; display:flex; margin:30px 0; gap:4px; }
+.tracker li { flex:1; text-align:center; font-size:10px; position:relative; color:var(--muted); overflow-wrap:anywhere; }
 .tracker li::before { content:""; height:2px; background:#e1e4da; position:absolute; top:13px; left:-50%; width:100%; z-index:0; }
 .tracker li:first-child::before { display:none; }
 .tracker span { position:relative; display:grid; place-items:center; width:28px; height:28px; margin:0 auto 10px; border-radius:50%; background:#e5e8df; color:#697264; }

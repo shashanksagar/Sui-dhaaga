@@ -1,11 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "client"
 }
 
 datasource db {
   provider  = "postgresql"
-  url      = env("DATABASE_URL")
+  url       = env("DATABASE_URL")
   directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
@@ -15,12 +15,28 @@ enum Role {
   ADMIN
 }
 
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+}
+
 enum OrderStatus {
-  PENDING_PICKUP
+  PENDING_TIMELINE_APPROVAL
+  PICKUP_SCHEDULED
   IN_TRANSIT_TO_TAILOR
   STITCHING
   READY_FOR_DELIVERY
-  DELIVERED
+  DELIVERED_PENDING_APPROVAL
+  ALTERATION_REQUESTED
+  ALTERATION_IN_TRANSIT
+  COMPLETED
 }
 
 enum ShipmentStatus {
@@ -33,11 +49,8 @@ enum ShipmentStatus {
 enum Leg {
   FABRIC_PICKUP
   FINAL_DELIVERY
-}
-
-enum Installment {
-  UPFRONT
-  FINAL
+  ALTERATION_PICKUP
+  ALTERATION_RETURN
 }
 
 enum PaymentStatus {
@@ -46,102 +59,198 @@ enum PaymentStatus {
   FAILED
 }
 
+enum Installment {
+  PICKUP
+  DELIVERY
+  APPROVAL
+  DESIGN
+}
+
+enum ContentKind {
+  PROFILE
+  ORDER_SPECIFICATION
+  MESSAGE
+  ALTERATION
+  REVIEW
+  IMAGE
+}
+
 model User {
-  id           String         @id @default(cuid())
-  name         String
-  email        String         @unique
-  passwordHash String
-  role         Role           @default(CUSTOMER)
-  location     String         @default("")
-  avatarUrl    String         @default("")
-  createdAt    DateTime       @default(now())
-  profile      TailorProfile?
-  purchases    Order[]        @relation("CustomerOrders")
-  commissions  Order[]        @relation("TailorOrders")
-  messages     Message[]
-  uploads      Upload[]
+  id                    String                @id @default(cuid())
+  maskedCode            String                @unique @default(cuid())
+  name                  String
+  email                 String                @unique
+  passwordHash          String
+  role                  Role                  @default(CUSTOMER)
+  location              String                @default("")
+  phone                 String                @default("")
+  avatarUrl             String                @default("")
+  createdAt             DateTime              @default(now())
+  profile               TailorProfile?
+  purchases             Order[]               @relation("CustomerOrders")
+  commissions           Order[]               @relation("TailorOrders")
+  sentMessages          Message[]
+  uploads               Upload[]
+  customerConversations Conversation[]        @relation("ConversationCustomer")
+  tailorConversations   Conversation[]        @relation("ConversationTailor")
+  alterations           Alteration[]
+  reviews               Review[]
+  subscriptionPayments  SubscriptionPayment[]
+  moderationItems       ModerationItem[]
 }
 
 model TailorProfile {
-  userId          String @id
-  user            User   @relation(fields: [userId], references: [id])
-  bio             String
-  specialty       String
-  styles          Json
-  basePrice       Int
-  turnaroundDays  Int
-  rating          Float
-  portfolioImages Json
-  workshopAddress Json @default("{}")
+  userId                      String             @id
+  user                        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio                         String             @default("")
+  publishedBio                String             @default("")
+  expertise                   Json               @default("[]")
+  publishedExpertise          Json               @default("[]")
+  garmentCatalog              Json               @default("[]")
+  publishedGarmentCatalog     Json               @default("[]")
+  workshopAddress             Json               @default("{}")
+  publishedWorkshopAddress    Json               @default("{}")
+  portfolioUploadIds          Json               @default("[]")
+  publishedPortfolioUploadIds Json               @default("[]")
+  profileVersion              Int                @default(1)
+  approvalStatus              ReviewStatus       @default(PENDING)
+  subscriptionStatus          SubscriptionStatus @default(PENDING)
+  subscriptionPaid            Boolean            @default(false)
+  monthlyFeeAmount            Int                @default(49900)
+  nextBillingDate             DateTime?
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
+}
+
+model AppSetting {
+  id                String   @id @default("global")
+  commissionPercent Int      @default(10)
+  updatedAt         DateTime @updatedAt
 }
 
 model Order {
-  id                 String      @id @default(cuid())
-  customerId         String
-  tailorId           String
-  customer           User        @relation("CustomerOrders", fields: [customerId], references: [id])
-  tailor             User        @relation("TailorOrders", fields: [tailorId], references: [id])
-  garmentType        String
-  measurements       Json
-  referenceImages    Json
-  totalAmount        Int
-  platformFeePercent Int         @default(10)
-  platformFeeAmount  Int
-  tailorPayout       Int
-  currency           String      @default("USD")
-  upfrontPaid        Boolean     @default(false)
-  finalPaid          Boolean     @default(false)
-  status             OrderStatus @default(PENDING_PICKUP)
-  pickupAddress      Json
-  deliveryAddress    Json
-  tailorAddress      Json        @default("{}")
-  checkoutKey        String      @unique
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
-  messages           Message[]
-  payments           Payment[]
-  shipments          Shipment[]
-  uploads            Upload[]
+  id                            String           @id @default(cuid())
+  customerId                    String
+  tailorId                      String
+  customer                      User             @relation("CustomerOrders", fields: [customerId], references: [id])
+  tailor                        User             @relation("TailorOrders", fields: [tailorId], references: [id])
+  conversationId                String?          @unique
+  conversation                  Conversation?    @relation(fields: [conversationId], references: [id])
+  garmentType                   String
+  measurementMode               String
+  measurements                  Json
+  requiredMeasurements          Json
+  measurementStatus             ReviewStatus     @default(PENDING)
+  hasReferenceCloth             Boolean          @default(false)
+  designSpecifications          String
+  publishedDesignSpecifications String           @default("")
+  contentStatus                 ReviewStatus     @default(PENDING)
+  contentVersion                Int              @default(1)
+  referenceUploadIds            Json             @default("[]")
+  basePrice                     Int
+  totalAmount                   Int
+  platformFeePercent            Int
+  platformFeeAmount             Int
+  tailorPayout                  Int
+  currency                      String           @default("INR")
+  pickupPaid                    Boolean          @default(false)
+  deliveryPaid                  Boolean          @default(false)
+  approvalPaid                  Boolean          @default(false)
+  status                        OrderStatus      @default(PENDING_TIMELINE_APPROVAL)
+  pickupAddress                 Json
+  deliveryAddress               Json
+  tailorAddress                 Json
+  agreedCompletionDays          Int
+  proposedCompletionDays        Int?
+  customerAgreedToTimeline      Boolean          @default(false)
+  timelineConfirmed             Boolean          @default(false)
+  checkoutKey                   String           @unique
+  version                       Int              @default(1)
+  customerRating                Int?
+  customerReview                String?
+  publishedReview               String?
+  reviewStatus                  ReviewStatus?
+  createdAt                     DateTime         @default(now())
+  updatedAt                     DateTime         @updatedAt
+  messages                      Message[]
+  payments                      Payment[]
+  shipments                     Shipment[]
+  alterations                   Alteration[]
+  reviews                       Review[]
+  moderationItems               ModerationItem[]
+  uploads                       Upload[]
 
   @@index([customerId, createdAt])
   @@index([tailorId, status])
 }
 
-model Message {
-  id        String   @id @default(cuid())
-  orderId   String
-  senderId  String
-  order     Order    @relation(fields: [orderId], references: [id])
-  sender    User     @relation(fields: [senderId], references: [id])
-  content   String
-  imageUrl  String?
-  clientKey String   @unique
-  createdAt DateTime @default(now())
-  upload    Upload?
+model Conversation {
+  id         String    @id @default(cuid())
+  customerId String
+  tailorId   String
+  customer   User      @relation("ConversationCustomer", fields: [customerId], references: [id])
+  tailor     User      @relation("ConversationTailor", fields: [tailorId], references: [id])
+  createdAt  DateTime  @default(now())
+  order      Order?
+  messages   Message[]
 
-  @@index([orderId, createdAt])
+  @@index([tailorId, createdAt])
+}
+
+model Message {
+  id               String       @id @default(cuid())
+  conversationId   String
+  orderId          String?
+  senderId         String
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  order            Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  sender           User         @relation(fields: [senderId], references: [id])
+  content          String
+  publishedContent String       @default("")
+  contentStatus    ReviewStatus @default(PENDING)
+  contentVersion   Int          @default(1)
+  uploadId         String?      @unique
+  upload           Upload?      @relation(fields: [uploadId], references: [id], onDelete: SetNull)
+  clientKey        String       @unique
+  createdAt        DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
 }
 
 model Payment {
   id             String        @id @default(cuid())
   orderId        String
-  order          Order         @relation(fields: [orderId], references: [id])
+  order          Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   installment    Installment
+  cycle          Int           @default(0)
   amount         Int
   status         PaymentStatus @default(PENDING)
   idempotencyKey String        @unique
   eventId        String?       @unique
+  approved       Boolean       @default(false)
+  contentVersion Int           @default(1)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  @@unique([orderId, installment])
+  @@index([orderId, installment, cycle])
+}
+
+model SubscriptionPayment {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount         Int
+  status         PaymentStatus @default(PENDING)
+  idempotencyKey String        @unique
+  createdAt      DateTime      @default(now())
 }
 
 model Shipment {
   id           String         @id @default(cuid())
   orderId      String
-  order        Order          @relation(fields: [orderId], references: [id])
+  order        Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   leg          Leg
+  cycle        Int            @default(0)
   status       ShipmentStatus @default(UNASSIGNED)
   courier      String         @default("")
   contact      String         @default("")
@@ -150,22 +259,83 @@ model Shipment {
   deliveredAt  DateTime?
   updatedAt    DateTime       @updatedAt
 
-  @@unique([orderId, leg])
+  @@unique([orderId, leg, cycle])
+}
+
+model Alteration {
+  id             String       @id @default(cuid())
+  orderId        String
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User         @relation(fields: [authorId], references: [id])
+  cycle          Int
+  alterationType String
+  notes          String
+  publishedNotes String       @default("")
+  contentStatus  ReviewStatus @default(PENDING)
+  amount         Int?
+  quoteVersion   Int          @default(1)
+  paid           Boolean      @default(false)
+  completed      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([orderId, cycle])
+}
+
+model Review {
+  id            String       @id @default(cuid())
+  orderId       String       @unique
+  order         Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerId    String
+  customer      User         @relation(fields: [customerId], references: [id])
+  rating        Int
+  originalText  String
+  publishedText String       @default("")
+  status        ReviewStatus @default(PENDING)
+  version       Int          @default(1)
+  createdAt     DateTime     @default(now())
+}
+
+model ModerationItem {
+  id                  String       @id @default(cuid())
+  kind                ContentKind
+  targetId            String
+  orderId             String?
+  order               Order?       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  authorId            String
+  author              User         @relation(fields: [authorId], references: [id])
+  contentVersion      Int
+  originalText        String       @default("")
+  publishedText       String       @default("")
+  uploadId            String?
+  upload              Upload?      @relation(fields: [uploadId], references: [id], onDelete: SetNull)
+  replacementUploadId String?
+  status              ReviewStatus @default(PENDING)
+  createdAt           DateTime     @default(now())
+
+  @@index([status, createdAt])
+  @@index([kind, targetId, contentVersion])
 }
 
 model Upload {
-  id        String   @id @default(cuid())
-  ownerId   String
-  owner     User     @relation(fields: [ownerId], references: [id])
-  orderId   String?
-  order     Order?   @relation(fields: [orderId], references: [id])
-  messageId String?  @unique
-  message   Message? @relation(fields: [messageId], references: [id])
-  key       String   @unique
-  mime      String
-  size      Int
-  createdAt DateTime @default(now())
-  data      UploadData?
+  id              String           @id @default(cuid())
+  claimedForModerationId String?    @unique
+  ownerId         String
+  owner           User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  orderId         String?
+  order           Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  key             String           @unique
+  mime            String
+  size            Int
+  approved        Boolean          @default(false)
+  contentVersion  Int              @default(1)
+  publicUse       Boolean          @default(false)
+  data            UploadData?
+  message         Message?
+  moderationItems ModerationItem[]
+  createdAt       DateTime         @default(now())
+
+  @@index([ownerId, createdAt])
 }
 
 model UploadData {

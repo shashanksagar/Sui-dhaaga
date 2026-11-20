@@ -1,9 +1,10 @@
 import { pageUser } from "@/server/auth";
-import { ledger, listOrders } from "@/server/orders";
-import { orderDTO } from "@/server/dto";
+import { adminState } from "@/server/admin";
+import { conversations } from "@/server/chat";
+import Link from "next/link";
 import { AdminDashboard } from "@/components/dashboards";
 export default async function AdminPage() {
   const user = await pageUser("ADMIN");
-  const orders = await listOrders(user);
-  return <div className="container"><div className="eyebrow">Behind every great delivery</div><h2>Keep every thread connected.</h2><p className="muted">Doorstep logistics, transparent accounting, and a little peace of mind.</p><AdminDashboard orders={orders.map(orderDTO)} ledger={ledger(orders)} /></div>;
+  const [state, rooms] = await Promise.all([adminState(user), conversations(user)]);
+  return <div className="container"><div className="eyebrow">Central operations hub</div><h2>Keep every thread connected.</h2><p className="muted">Private identity mediation, review, doorstep logistics and transparent accounting.</p><AdminDashboard state={state} /><h3>Monitor masked design rooms</h3>{rooms.map(c => <p key={c.id}><Link className="btn outline" href={`/inquiries/${c.id}`}>{c.customerMaskedCode} / {c.tailorMaskedCode}</Link></p>)}</div>;
 }

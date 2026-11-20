@@ -1,12 +1,21 @@
+import { measurementFields } from "./validation.ts";
+export const cities = ["Mumbai", "Delhi", "Bengaluru", "Jaipur", "Kolkata"] as const;
 export const tailors = [
-  { id: "tailor-amara", name: "Amara Atelier", location: "Lagos, Nigeria", specialty: "Contemporary African", bio: "Heritage textiles, modern silhouettes. Beautifully personal pieces, made with care in our Lagos atelier.", basePrice: 12000, turnaroundDays: 12, rating: 4.9, styles: ["Ankara", "Occasion wear"], color: "#b65d3e", image: "/images/atelier-1.svg" },
-  { id: "tailor-luca", name: "Luca & Thread", location: "Florence, Italy", specialty: "Classic tailoring", bio: "Quiet confidence in every seam. Italian-inspired tailoring for your everyday and extraordinary moments.", basePrice: 24000, turnaroundDays: 18, rating: 4.9, styles: ["Suits", "Minimalist"], color: "#657765", image: "/images/atelier-2.svg" },
-  { id: "tailor-meera", name: "Studio Meera", location: "Jaipur, India", specialty: "Bridal & embroidery", bio: "Hand-finished embroidery and thoughtful details, bringing the artistry of Jaipur to your wardrobe.", basePrice: 18000, turnaroundDays: 15, rating: 4.8, styles: ["Bridal", "Embroidery"], color: "#c19766", image: "/images/atelier-3.svg" },
-  { id: "tailor-june", name: "June Studio", location: "Seoul, South Korea", specialty: "Modern essentials", bio: "Relaxed shapes, precise cuts, and a little unexpected detail. Clothes that feel like you.", basePrice: 9500, turnaroundDays: 10, rating: 4.7, styles: ["Minimalist", "Everyday"], color: "#738c8b", image: "/images/atelier-4.svg" },
-  { id: "tailor-noor", name: "Maison Noor", location: "Marrakech, Morocco", specialty: "Artisanal occasion wear", bio: "Flowing forms and traditional craftsmanship for unforgettable occasions. Made slowly, worn forever.", basePrice: 16000, turnaroundDays: 14, rating: 4.9, styles: ["Occasion wear", "Handcrafted"], color: "#9b6b63", image: "/images/atelier-5.svg" },
+  { id: "tailor-amara", city: "Mumbai", expertise: ["Dresses", "Embroidery"], bio: "Thoughtful silhouettes and fine hand-finished details for memorable occasions.", basePrice: 120000, estimatedDays: 12, garmentType: "Dress", image: "/images/atelier-1.svg" },
+  { id: "tailor-luca", city: "Delhi", expertise: ["Suits", "Formalwear"], bio: "Precise modern tailoring with a focus on fit, structure, and lasting comfort.", basePrice: 240000, estimatedDays: 18, garmentType: "Suit", image: "/images/atelier-2.svg" },
+  { id: "tailor-meera", city: "Jaipur", expertise: ["Bridal", "Embroidery"], bio: "Artful bridal pieces with considered handwork and thoughtful finishing.", basePrice: 180000, estimatedDays: 15, garmentType: "Lehenga", image: "/images/atelier-3.svg" },
+  { id: "tailor-june", city: "Bengaluru", expertise: ["Casualwear", "Dresses"], bio: "Relaxed everyday shapes, carefully cut and made for easy movement.", basePrice: 95000, estimatedDays: 10, garmentType: "Shirt", image: "/images/atelier-4.svg" },
+  { id: "tailor-noor", city: "Kolkata", expertise: ["Traditional wear", "Womenswear"], bio: "Traditional craftsmanship interpreted for expressive contemporary dressing.", basePrice: 160000, estimatedDays: 14, garmentType: "Traditional wear", image: "/images/atelier-5.svg" },
 ];
-export const garments = ["Dress", "Suit", "Shirt", "Trousers", "Traditional wear"];
+export const measurementFieldsByGarment: Record<string, string[]> = {
+  Dress: ["bust", "waist", "hip", "shoulder", "length"], Suit: ["chest", "waist", "shoulder", "sleeve", "length"],
+  Shirt: ["chest", "neck", "shoulder", "sleeve", "length"], Trousers: ["waist", "hip", "inseam", "length"],
+  "Traditional wear": ["chest", "waist", "hip", "shoulder", "length"], Blouse: ["bust", "waist", "shoulder", "sleeve"],
+  Kurta: ["chest", "waist", "shoulder", "sleeve", "length"], Lehenga: ["waist", "hip", "length"],
+};
+export function catalogFor(t: typeof tailors[number]) {
+  return [{ garmentType: t.garmentType, basePrice: t.basePrice, estimatedDays: t.estimatedDays, requiredMeasurements: measurementFieldsByGarment[t.garmentType] ?? [...measurementFields] }];
+}
 export function workshopAddress(t: typeof tailors[number]) {
-  const [city, country] = t.location.split(", ");
-  return { name: t.name, line1: "12 Atelier Lane (demo address)", city, country, postalCode: "DEMO-01", phone: "+1 555 0199" };
+  return { name: "Workshop", line1: "Private workshop address", city: t.city, postalCode: "400001", country: "India", phone: "0000000000" };
 }

@@ -1,80 +1,35 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { io } from "socket.io-client";
-import { Paperclip, Send, X } from "lucide-react";
-import { api, errorText, uploadImage } from "@/lib/client";
-type Message = { id: string; senderId: string; sender: { name: string }; content: string; imageUrl: string | null; createdAt: string };
-export function Chat({ orderId, userId, initial }: { orderId: string; userId: string; initial: Message[] }) {
-  const [history, setHistory] = useState(initial);
-  const [text, setText] = useState("");
-  const [image, setImage] = useState<{ id: string; url: string } | null>(null);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [connection, setConnection] = useState("Connecting...");
-  const [connectionError, setConnectionError] = useState("");
-  const end = useRef<HTMLDivElement>(null);
-  const retry = useRef<{ payload: string; key: string } | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  function merge(items: Message[]) {
-    setHistory(old => [...new Map([...old, ...items].map(m => [m.id, m])).values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)));
-  }
+import type { MessageDTO } from "@/lib/contracts";
+import { contactError } from "@/lib/privacy";
+import { api, errorText } from "@/lib/client";
+import { PhotoPicker, type Photo } from "./fields";
+export function Chat({ conversationId, initial = [] }: { conversationId: string; initial?: MessageDTO[] }) {
+  const [history, setHistory] = useState(initial), [text, setText] = useState(""), [photos, setPhotos] = useState<Photo[]>([]);
+  const [error, setError] = useState(""), [connectionError, setConnectionError] = useState(""), [busy, setBusy] = useState(false), [uploadBusy, setUploadBusy] = useState(false);
+  const end = useRef<HTMLDivElement>(null), retry = useRef<{ payload: string; key: string } | null>(null);
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_CHAT_TRANSPORT === "polling") {
-      let active = true;
-      let timer: ReturnType<typeof setTimeout>;
-      async function refresh() {
-        try {
-          const items = await api<Message[]>(`/api/orders/${orderId}/messages`);
-          if (!active) return;
-          merge(items);
-          setConnection("Connected to your atelier - refreshes every 3 seconds");
-          setConnectionError("");
-        } catch (error) {
-          if (!active) return;
-          setConnection("Disconnected - retrying");
-          setConnectionError(errorText(error));
-        } finally {
-          if (active) timer = setTimeout(refresh, 3000);
-        }
-      }
-      void refresh();
-      return () => { active = false; clearTimeout(timer); };
+    let active = true; let timer: ReturnType<typeof setTimeout>;
+    async function refresh() {
+      try { const items = await api<MessageDTO[]>(`/api/conversations/${conversationId}/messages`); if (active) { setHistory(items); setConnectionError(""); } }
+      catch (error) { if (active) setConnectionError(errorText(error)); }
+      finally { if (active) timer = setTimeout(refresh, 3000); }
     }
-    const socket = io({ transports: ["websocket", "polling"] });
-    socket.on("connect", () => {
-      socket.emit("join", orderId, (result: { ok?: boolean; error?: string }) => {
-        if (result.error) { setConnection("Conversation unavailable"); setError(result.error); return; }
-        setConnection("Connected to your atelier");
-        api<Message[]>(`/api/orders/${orderId}/messages`).then(merge).catch(error => setError(errorText(error)));
-      });
-    });
-    socket.on("message", (message: Message) => merge([message]));
-    socket.on("connect_error", error => { setConnection("Disconnected - retrying"); setError(error.message); });
-    socket.on("disconnect", () => setConnection("Reconnecting..."));
-    return () => { socket.disconnect(); };
-  }, [orderId]);
-  useEffect(() => { end.current?.scrollIntoView({ block: "nearest", behavior: "instant" }); }, [history]);
-  return <section className="card"><div style={{ padding: "16px 24px", borderBottom: "1px solid var(--line)" }}><strong style={{ fontSize: 13 }}>Design room</strong><span className="meta" role="status" style={{ marginTop: 6 }}>{connection}</span></div>
-    <div className="chat-history" role="log" aria-label="Order conversation" aria-live="polite">{!history.length && <p className="muted">Every great creation starts with a conversation. Say hello to your maker.</p>}{history.map(m => <div key={m.id} className={`message ${m.senderId === userId ? "mine" : ""}`}><strong style={{ fontSize: 11 }}>{m.sender.name}</strong>{m.content && <p>{m.content}</p>}{m.imageUrl && <a href={m.imageUrl} target="_blank" rel="noreferrer"><img src={m.imageUrl} alt="Shared design attachment" /></a>}<small>{new Date(m.createdAt).toLocaleString()}</small></div>)}<div ref={end} /></div>
+    void refresh(); return () => { active = false; clearTimeout(timer); };
+  }, [conversationId]);
+  useEffect(() => { end.current?.scrollIntoView({ block: "nearest" }); }, [history]);
+  const blocked = contactError(text);
+  return <section className="card"><div style={{ padding: 20 }}><h3>Masked design room</h3><p className="notice">Use aliases only. Phone numbers, emails and handles are blocked. Admin reviews text and images before sharing; names and addresses must not be included.</p><span className="meta">Messages refresh every 3 seconds. Pending messages are visible only to you and Admin.</span></div><div className="chat-history" role="log" aria-label="Masked conversation" aria-live="polite">{history.length === 0 && <p className="muted">Ask about fabrics, design and finishing.</p>}{history.map(m => <div key={m.id} className={`message ${m.mine ? "mine" : ""}`}><strong>{m.alias}</strong>{m.content && <p>{m.content}</p>}{m.imageUrl && <img src={m.imageUrl} alt="Reviewed design attachment" />}<span className="badge">{m.moderationStatus}</span><small> {new Date(m.createdAt).toLocaleString()}</small></div>)}<div ref={end} /></div>
     <form style={{ padding: 20 }} onSubmit={async e => {
-      e.preventDefault(); setBusy(true); setError("");
+      e.preventDefault(); setError("");
+      if (blocked) { setError(blocked); return; }
+      setBusy(true);
       try {
-        const payload = JSON.stringify({ content: text, uploadId: image?.id });
+        const payload = JSON.stringify({ content: text, uploadId: photos[0]?.id });
         if (retry.current?.payload !== payload) retry.current = { payload, key: crypto.randomUUID() };
-        const saved = await api<Message>(`/api/orders/${orderId}/messages`, "POST", { content: text, uploadId: image?.id, clientKey: retry.current.key });
-        merge([saved]); setText(""); setImage(null); retry.current = null;
+        const message = await api<MessageDTO>(`/api/conversations/${conversationId}/messages`, "POST", { content: text, uploadId: photos[0]?.id, clientKey: retry.current.key });
+        setHistory(old => [...old.filter(m => m.id !== message.id), message]); setText(""); setPhotos([]); retry.current = null;
       } catch (error) { setError(errorText(error)); } finally { setBusy(false); }
-    }}><label className="field">Your message<textarea placeholder="Talk fabrics, finishing touches, and everything in between..." maxLength={4000} value={text} onChange={e => setText(e.target.value)} disabled={busy} /></label>
-      {image && <div className="photos" style={{ marginBottom: 15 }}><img src={image.url} alt="Image ready to send" /><button className="btn small outline" type="button" disabled={busy} aria-label="Remove chat image" onClick={async () => {
-        setBusy(true); setError(""); try { await api(`/api/uploads/${image.id}`, "DELETE"); setImage(null); } catch (error) { setError(errorText(error)); } finally { setBusy(false); }
-      }}><X size={14} /></button></div>}
-      <div className="actions"><button type="button" className="btn outline" disabled={busy || !!image} onClick={() => inputRef.current?.click()}><Paperclip size={15} /> Attach image</button><input ref={inputRef} className="sr-only" aria-label="Chat image" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy || !!image} onChange={async e => {
-        const file = e.target.files?.[0]; if (!file) return;
-        setBusy(true); setError("");
-        try { setImage(await uploadImage(file)); } catch (error) { setError(errorText(error)); } finally { setBusy(false); e.target.value = ""; }
-      }} /><button className="btn rust" disabled={busy || (!text.trim() && !image)}><Send size={14} />{busy ? "Sending..." : "Send message"}</button></div>
-      {error && <p className="notice error" role="alert">{error}</p>}
-      {connectionError && <p className="notice error" role="alert">{connectionError}</p>}
-    </form>
+    }}><label className="field">Your message<textarea value={text} maxLength={4000} onChange={e => setText(e.target.value)} disabled={busy} /></label>{blocked && <p className="notice error" role="alert">{blocked}</p>}<PhotoPicker value={photos} onChange={setPhotos} onBusy={setUploadBusy} limit={1} label="Design attachment" /><button className="btn rust" disabled={busy || uploadBusy || !!blocked || (!text.trim() && !photos.length)}>{busy ? "Submitting..." : "Submit for review"}</button>{error && <p className="notice error" role="alert">{error}</p>}{connectionError && <p className="notice error" role="alert">Connection interrupted: {connectionError}</p>}</form>
   </section>;
 }

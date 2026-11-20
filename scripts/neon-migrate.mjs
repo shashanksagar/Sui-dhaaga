@@ -2,7 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { setDefaultResultOrder } from "node:dns";
 import { resolve } from "node:path";
-import { Client } from "pg";
+import { Client, neonConfig } from "@neondatabase/serverless";
+
+neonConfig.webSocketConstructor = WebSocket;
 
 setDefaultResultOrder("ipv4first");
 
@@ -14,7 +16,7 @@ if (!url.hostname.endsWith(".neon.tech")) {
   throw new Error("DATABASE_URL_UNPOOLED must point to a Neon PostgreSQL endpoint.");
 }
 url.searchParams.set("sslmode", "verify-full");
-url.searchParams.set("sslnegotiation", "direct");
+url.searchParams.delete("sslnegotiation");
 url.searchParams.set("connect_timeout", "30");
 const schema = url.searchParams.get("schema") || "public";
 if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error("Unsupported PostgreSQL schema name.");

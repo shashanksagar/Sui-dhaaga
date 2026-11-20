@@ -15,7 +15,7 @@ export const authOptions: NextAuthOptions = {
       rateLimit(`login:${email}`);
       const user = await db.user.findUnique({ where: { email } });
       if (!user || !(await compare(credentials.password, user.passwordHash))) return null;
-      if (user.role !== "CUSTOMER" && process.env.DEMO_MODE !== "true") return null;
+
       return { id: user.id, name: user.name, email: user.email, role: user.role };
     },
   })],

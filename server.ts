@@ -8,7 +8,7 @@ import { AppError } from "./src/server/errors.ts";
 
 const dev = !process.argv.includes("--production");
 const hostname = process.env.HOST || "127.0.0.1";
-const port = Number(process.env.PORT || 3000);
+const port = Number(process.env.PORT || 3001);
 const app = next({ dev, hostname, port });
 await app.prepare();
 const handler = app.getRequestHandler();
@@ -49,7 +49,7 @@ io.on("connection", socket => {
     }
   });
 });
-server.listen(port, hostname, () => console.log(`Stitch Connect ready at ${process.env.NEXTAUTH_URL || `http://${hostname}:${port}`}`));
+server.listen(port, hostname, () => console.log(`Sui-dhaaga ready at ${process.env.NEXTAUTH_URL || `http://${hostname}:${port}`}`));
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => { io.close(); server.close(() => process.exit(0)); });
 }
