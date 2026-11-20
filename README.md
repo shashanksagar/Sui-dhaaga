@@ -163,13 +163,17 @@ excluded from Git.
 ## Validation and boundaries
 
 Current feature-build evidence: the new database's two migrations and seed
-succeeded; production build, lint, type-check and 17 focused tests passed. The
+succeeded; production build, lint, type-check and 18 focused tests passed. The
 guided customer checkout browser test also passed. The all-in-one validation
 tool repeatedly hit its host timeout during the longer order/correction flow.
 **Full workflow and restart verification remain pending; this is not a completed
 demo-readiness certification.** Cancelled test servers and known temporary
 schemas were cleaned up. Run the complete browser suite directly in a terminal
 without the tool's invocation timeout before calling the demo verified.
+
+On Windows/OneDrive, a stale generated `.next` cache can cause an `EINVAL`
+`readlink` build error. Removing only that generated cache and rebuilding
+resolved the observed local failure.
 
 ```powershell
 npm run typecheck

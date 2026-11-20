@@ -146,7 +146,7 @@ export async function transitionOrder(id: string, raw: unknown, user: Actor): Pr
         validateAlterationNotes(input.notes);
         if (order.status !== "DELIVERED_PENDING_APPROVAL") throw new AppError("Alterations can only be requested after delivery.", 409);
         const cycle = Math.max(0, ...order.alterations.map(a => a.cycle)) + 1;
-        await tx.alteration.create({ data: { orderId: id, authorId: user.id, cycle, alterationType: input.alterationType, notes: input.notes } });
+        await tx.alteration.create({ data: { orderId: id, authorId: user.id, cycle, alterationType: input.alterationType, notes: input.notes, amount: input.alterationType === "FITTING_FREE" ? 0 : null } });
         await tx.shipment.createMany({ data: [{ orderId: id, leg: "ALTERATION_PICKUP", cycle }, { orderId: id, leg: "ALTERATION_RETURN", cycle }] });
         await tx.moderationItem.create({ data: { kind: "ALTERATION", targetId: id, orderId: id, authorId: user.id, contentVersion: cycle, originalText: input.notes } });
         await bump({ status: "ALTERATION_REQUESTED" });
